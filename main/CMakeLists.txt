@@ -1,5 +1,7 @@
 idf_component_register(
-    SRCS "main.cpp" "Scanner.cpp"
+    SRCS
+        "main.cpp"
+        "buttons/Buttons.cpp"
     INCLUDE_DIRS "."
     REQUIRES
         driver

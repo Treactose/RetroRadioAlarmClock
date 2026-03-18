@@ -1,51 +1,70 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "Scanner.hpp"
+#include "freertos/queue.h"
+#include "esp_log.h"
 #include "esp_timer.h"
 
-static const Wire WIRES[] = {
-    {GPIO_NUM_32, "J13"}, // left side
-    {GPIO_NUM_33, "J16"}, // left side
-    {GPIO_NUM_25, "J15"}, // left side
-    {GPIO_NUM_26, "J14"}, // left side
-    {GPIO_NUM_27, "J18"}, // left side
-    {GPIO_NUM_13, "J19"}, // left side
-};
+#include "buttons/Buttons.hpp"
 
-static const int WIRE_COUNT = sizeof(WIRES) / sizeof(WIRES[0]);
+static const char *TAG = "main";
 
-static Scanner scanner(WIRES, WIRE_COUNT);
+static QueueHandle_t s_button_queue = nullptr;
 
-static void scan_task(void * /*arg*/)
+static void handle_button(ButtonEvent event)
 {
-    scanner.init();
+    switch (event)
+    {
+    case ButtonEvent::FAST:
+        ESP_LOGI(TAG, "FAST pressed");
+        break;
+    case ButtonEvent::SLOW:
+        ESP_LOGI(TAG, "SLOW pressed");
+        break;
+    case ButtonEvent::ALARM:
+        ESP_LOGI(TAG, "ALARM pressed");
+        break;
+    case ButtonEvent::SLEEP:
+        ESP_LOGI(TAG, "SLEEP pressed");
+        break;
+    case ButtonEvent::SNOOZE:
+        ESP_LOGI(TAG, "SNOOZE pressed");
+        break;
+    }
+}
 
-    // Snapshot every 10 seconds as a reminder of current state
-    int64_t last_snapshot = 0;
-
+static void button_task(void * /*arg*/)
+{
+    ButtonEvent event;
     while (true)
     {
-        scanner.poll();
-
-        int64_t now = esp_timer_get_time();
-        if ((now - last_snapshot) >= 10000000LL)
+        if (xQueueReceive(s_button_queue, &event, portMAX_DELAY) == pdTRUE)
         {
-            scanner.snapshot();
-            last_snapshot = now;
+            handle_button(event);
         }
-
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
 extern "C" void app_main()
 {
+    s_button_queue = xQueueCreate(10, sizeof(ButtonEvent));
+    configASSERT(s_button_queue);
+
+    static Buttons buttons(s_button_queue);
+    buttons.init();
+
     xTaskCreatePinnedToCore(
-        scan_task,
-        "scan_task",
-        4096,
+        button_task,
+        "button_task",
+        2048,
         nullptr,
         5,
         nullptr,
         0);
+
+    ESP_LOGI(TAG, "GE clock mod ready");
+
+    while (true)
+    {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
